@@ -1,5 +1,11 @@
 本文解析bootsect.s程序。
 
+bootsect.s可以分为4部分:
+- 读取bootsect到0x7c00
+- 搬运bootsect到0x90000
+- 读取setup到0x90200
+- 读取system到0x10000
+
 ![StartUp](../images/01_bootsect/startup.png)
 
 即从硬盘启动扇区的512字节中复制数据到内存中0x7c00位置，并跳转到该位置执行，
@@ -568,6 +574,6 @@ boot_flag:
    
 所以整个路径就是这样的。
 
-![bootSect_12](../images/01_bootsect/01_bootsect/bootsect_12.png#pic_center)
+![bootSect_12](../images/01_bootsect/bootsect_12.png#pic_center)
 
 所以，我们即将跳转到的内存中的 0x90200 处的代码，就是从硬盘第二个扇区开始处加载到内存的。第二个扇区的最开始处，那也就是 setup.s 文件的第一行代码咯。

@@ -1,6 +1,6 @@
 本文解析bootsect.s程序。
 
-![StartUp](images/startup.png)
+![StartUp](../images/01_bootsect/startup.png)
 
 即从硬盘启动扇区的512字节中复制数据到内存中0x7c00位置，并跳转到该位置执行，
 
@@ -33,7 +33,7 @@ ROOT_DEV = 0x306
 ```
 
 从硬盘中第0个扇道0个磁头0磁道的1扇区复制BOOTSEG
-![bootSect_01](images/bootsect_01.png)
+![bootSect_01](../images/01_bootsect/bootsect_01.png)
 
 ```
 entry start
@@ -70,7 +70,7 @@ entry start
 ```
 
 开始执行start部分代码，本段第一次开始执行过程中，寄存器取值变化如图所示
-![bootSect_02](images/bootsect_02.png#pic_center)
+![bootSect_02](../images/01_bootsect/bootsect_02.png#pic_center)
 
 ```
 	rep
@@ -83,12 +83,12 @@ entry start
 
 **movw**: 表示复制一个字(Word 16位)，即每次复制两个字节，从ds:si复制到es:di处；
 
-![bootSect_03](images/bootsect_03.png#pic_center)
+![bootSect_03](../images/01_bootsect/bootsect_03.png#pic_center)
 
 
 本段函数表示，将内存地址0x7c00处开始的512个字节(256*2)的数据，原封不动复制到0x90000处。
 
-![bootSect_04](images/bootsect_04.png#pic_center)
+![bootSect_04](../images/01_bootsect/bootsect_04.png#pic_center)
 
 ```
 	jmpi    go, INITSEG
@@ -98,7 +98,7 @@ jmpi 是一个段间跳转指令，表示跳转到 0x9000:go 处执行
 **jmpi**: 表示跳转到INITSEG(0x9000)为基址，go(此处假定地址为0x0008)为变址的地址继续运行
 原理详解：jmpi IP:CS,其中 CS 和 IP是 内存寻址的两个坐标，通过计算CS左移4位+IP确定内存地址。文中通过jmpi go,0x9000,CS被改为0x9000,IP被改为go的地址。本回就是拷贝运行中的系统程序（512字节（1个扇区大小））到另一个内存区域，然后继续从前面执行的位置处执行启动代码
 
-![bootSect_05](images/bootsect_05.png#pic_center)
+![bootSect_05](../images/01_bootsect/bootsect_05.png#pic_center)
 
 
 ```
@@ -109,7 +109,7 @@ go: mov ax, cs
 	mov sp, #0xFF00
 ```
 
-![bootSect_06](images/bootsect_06.png#pic_center)
+![bootSect_06](../images/01_bootsect/bootsect_06.png#pic_center)
 
 **ds**:数据段寄存器
 
@@ -117,7 +117,7 @@ go: mov ax, cs
 
 **ss**:栈段寄存器，后面要配合栈基址寄存器 sp 来表示此时的栈顶地址。而此时 sp 寄存器被赋值为了 0xff00 了，所以目前的栈顶地址就是 ss:sp 所指向的地址 0x9ff00 处。
 
-![bootSect_07](images/bootsect_07.png#pic_center)
+![bootSect_07](../images/01_bootsect/bootsect_07.png#pic_center)
 
 第一，代码从硬盘移到内存，又从内存挪了个地方，放在了 0x90000 处。
  
@@ -131,7 +131,7 @@ go: mov ax, cs
 
 再拔高一下，其实操作系统在做的事情，就是给如何访问代码，如何访问数据，如何访问栈进行了一下内存的初步规划。其中访问代码和访问数据的规划方式就是设置了一个基址而已，访问栈就是把栈顶指针指向了一个远离代码位置的地方而已。
 
-![bootSect_08](images/bootsect_08.png#pic_center)
+![bootSect_08](../images/01_bootsect/bootsect_08.png#pic_center)
 
 # load_steup
 
@@ -317,13 +317,13 @@ endbss:
 
 int 0x13 表示发起 0x13 号中断，这条指令上面给 dx、cx、bx、ax 赋值都是作为这个中断程序的参数。中断发起后，CPU 会通过这个中断号，去寻找对应的中断处理程序的入口地址，并跳转过去执行，逻辑上就相当于执行了一个函数。而 0x13 号中断的处理程序是 BIOS 提前给我们写好的，是读取磁盘的相关功能的函数。
 
-![bootSect_10](images/bootsect_10.png#pic_center)
+![bootSect_10](../images/01_bootsect/bootsect_10.png#pic_center)
 
 之后真正进入操作系统内核后，中断处理程序是需要我们自己去重新写的，这个在后面的章节中，你会不断看到各个模块注册自己相关的中断处理程序，所以不要急。此时为了方便就先用 BIOS 提前给我们写好的程序了。
 
 本段代码的注释已经写的很明确了，直接说最终的作用吧，就是将硬盘的第 2 个扇区开始，把数据加载到内存 0x90200 处，共加载 4 个扇区，图示其实就是这样。
 
-![bootSect_09](images/bootsect_09.png#pic_center)
+![bootSect_09](../images/01_bootsect/bootsect_09.png#pic_center)
 
 可以看到，如果从对应扇区读取文件成功，就跳转到 ok_load_setup 这个标签，如果失败，则会不断重复执行这段代码，也就是重试。那我们就别管重试逻辑了，直接看成功后跳转的 ok_load_setup 这个标签后的代码
 
@@ -394,11 +394,11 @@ read_it:
 其作用是把从硬盘第 6 个扇区开始往后的 240 个扇区，加载到内存 0x10000 处，和之前的从硬盘捣腾到内存是一个道理。
 
 
-![bootSect_14](images/bootsect_14.jpg#pic_center)
+![bootSect_14](../images/01_bootsect/bootsect_14.jpg#pic_center)
 
 至此，整个操作系统的全部代码，就已经全部从硬盘中，被搬迁到内存来了。
 
-![bootSect_11](images/bootsect_11.png#pic_center)
+![bootSect_11](../images/01_bootsect/bootsect_11.png#pic_center)
 
 
 
@@ -456,7 +456,7 @@ sectors:
 
 sectors是个标量指向一个word长的地址。seg cs表明了sectors的段地址是cs(0x9000)，而不是ds。而且seg cs 的作用范围只有下一行，不会延伸到其他地方。所以此处为
 
-![bootSect_13](images/bootsect_13.png#pic_center)
+![bootSect_13](../images/01_bootsect/bootsect_13.png#pic_center)
 
 ```
 	mov	ax,#INITSEG
@@ -546,7 +546,7 @@ root_dev:
 ```
 加载系统后，获取根设备的参数,Linux 0.11使用Minix操作系统的文件系统管理方式，要求系统必须存在一个根文件系统，其他文件系统挂接其上，而不是同等地位。
 
-![bootSect_15](images/bootsect_15.png#pic_center)
+![bootSect_15](../images/01_bootsect/bootsect_15.png#pic_center)
 
 
 Linux 0.11没有提供在设备上建立文件系统的工具，故必须在一个正在运行的系统上利用工具（类似FDISK和Format）做出一个文件系统并加载至本机。因此Linux 0.11的启动需要两部分数据，即系统内核镜像和根文件系统。注意：这里的文件系统指的不是操作系统内核中的文件系统代码，而是有配套的文件系统格式的设备，如一张格式化好的软盘。因为本书假设所用的计算机安装了一个软盘驱动器、一个硬盘驱动器，在内存中开辟了2 MB的空间作为虚拟盘（见第2章的main函数），并在BIOS中设置软盘驱动器为启动盘，所以，经过一系列检测，确认计算机中实际安装的软盘驱动器为根设备，并将信息写入机器系统数据。
@@ -568,6 +568,6 @@ boot_flag:
    
 所以整个路径就是这样的。
 
-![bootSect_12](images/bootsect_12.png#pic_center)
+![bootSect_12](../images/01_bootsect/01_bootsect/bootsect_12.png#pic_center)
 
 所以，我们即将跳转到的内存中的 0x90200 处的代码，就是从硬盘第二个扇区开始处加载到内存的。第二个扇区的最开始处，那也就是 setup.s 文件的第一行代码咯。

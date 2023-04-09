@@ -1,24 +1,24 @@
 #源码结构
 
 linux-0.11/
-├── boot/         # 引导加载程序目录
-│   ├── bootsect.s    # 第一阶段启动扇区汇编代码
-│   ├── setup.s       # 第二阶段启动设置处理器保护模式
-│   └── head.s
-├── include/             # 内核头文件目录 
-├── init/                 # 系统初始化代码
+├── boot/               # 引导加载程序目录
+│   ├── bootsect.s      # 第一阶段启动扇区汇编代码
+│   ├── setup.s         # 第二阶段启动设置处理器保护模式
+│   └── head.s          # 开启分页机制，进入main函数处理
+├── include/            # 内核头文件目录 
+├── init/               # 系统初始化代码
 │   ├── main.c          # 内核初始化及用户进程创建代码
 │   └── Makefile        # init源代码make文件
-├── kernel/          # 内核源代码 
-│   ├── asm/              # CPU平台相关文件 
-│   ├── fs/               # 文件系统代码
-│   ├── mm/              # 内存管理代码 
-│   ├── sched/           # 进程调度代码 
-│   ├── sys/             # System Call接口代码   
-│   └── Makefile         # 内核源代码make文件
-├── lib/                    # 基础库代码 
-├── tools/            # 工具和实用程序
-└── Makefile           # 整个内核Makefile  
+├── kernel/             # 内核源代码 
+│   ├── asm/            # CPU平台相关文件 
+│   ├── fs/             # 文件系统代码
+│   ├── mm/             # 内存管理代码 
+│   ├── sched/          # 进程调度代码 
+│   ├── sys/            # System Call接口代码   
+│   └── Makefile        # 内核源代码make文件
+├── lib/                # 基础库代码 
+├── tools/              # 工具和实用程序
+└── Makefile            # 整个内核Makefile  
 
 
 

@@ -113,8 +113,8 @@ void main(void)		/* This really IS void, no error here. */
  * 此时中断仍被禁止着，做完必要的设置后就将其开启。 
  */
 // 下面这段代码用于保存： 
- // 根设备号 ÎROOT_DEV； 高速缓存末端地址Î buffer_memory_end； 
- // 机器内存数Î memory_end；主内存开始地址 Îmain_memory_start；
+ // 根设备号 ROOT_DEV； 高速缓存末端地址 buffer_memory_end； 
+ // 机器内存数 memory_end；主内存开始地址 main_memory_start；
  	ROOT_DEV = ORIG_ROOT_DEV;
  	drive_info = DRIVE_INFO;
 	memory_end = (1<<20) + (EXT_MEM_K<<10);        // 内存大小=1Mb 字节+扩展内存(k)*1024 字节

@@ -1,11 +1,14 @@
  
-本文解析setup.s，主要可以分为部分：
+本文解析setup.s，主要可以分为5部分：
 - 提取机器系统数据(-110)
 - 把system搬运到0x00000（-127）
+- 赋值IDTR，GDTR，建立GDT(130-134)
 - 开启A20地址线（-143）
 - 重编程8259A(-179)
 - 进入保护模式（-193）
 
+
+# 提取机器系统数据
 
 ```
 INITSEG  = 0x9000	! we move boot here - out of the way
@@ -161,6 +164,8 @@ is_disk1:
 | 0 | 0 | 0|0| 0| 0| 0|0 |0| 0 | 0 | ID |VIP| VIF | AC | VM |RF| 0 |NT | IOPL |OF| DF | IF | TF |SF| ZF | 0| AF |0| PF | 1 | CF |
 
 
+# 把system搬运到0x00000
+
 ```
 ! first we move the system to it's rightful place
 
@@ -195,6 +200,8 @@ do_move:                !========================= step 2: move system to 0x0000
 那么现在的内存布局就是这个样子。
 
 ![setup_03](../images/02_setup/setup_03.png#pic_center)
+
+# 赋值IDTR，GDTR，建立GDT
 
 ```
 end_move:                   !========================= step 3: load idt and gdt ==============
@@ -279,6 +286,8 @@ IDT虽然已经设置，实为一张空表，原因是目前已关中断，无�
     此处采用的是第一种方法。
 
 
+# 开启A20地址线
+
 ```
 ! that was painless, now we enable A20
 !========================= step 4: open A20 ==============
@@ -292,6 +301,8 @@ IDT虽然已经设置，实为一张空表，原因是目前已关中断，无�
     ...
 ```
 清空内存后，写入初始化控制字后，打开A20，实现32位寻址
+
+# 重编程8259A
 
 ```
 empty_8042:
@@ -391,6 +402,8 @@ empty_8042表示循环清空8042端口
 |IRQ13	|0x2d|	数学协处理器|
 |IRQ14	|0x2e|	硬盘中断|
 |IRQ15	|0x2f|	保留|
+
+# 进入保护模式
 
 ```
 ! Well, now's the time to actually move into protected mode. To make

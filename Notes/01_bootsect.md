@@ -1,18 +1,15 @@
 本文解析bootsect.s程序。
 
 bootsect.s可以分为4部分:
-- 读取bootsect到0x7c00
-- 搬运bootsect到0x90000
-- 读取setup到0x90200
+- 读取bootsect到0x7c00，搬运bootsect到0x90000
 - 读取system到0x10000
+- 读取setup到0x90200
 
 ![StartUp](../images/01_bootsect/startup.png)
 
 即从硬盘启动扇区的512字节中复制数据到内存中0x7c00位置，并跳转到该位置执行，
 
-# start
-
-对应代码
+# 读取bootsect到0x7c00 搬运bootsect到0x90000
 
 ```
 SYSSIZE = 0x3000
@@ -139,7 +136,7 @@ go: mov ax, cs
 
 ![bootSect_08](../images/01_bootsect/bootsect_08.png#pic_center)
 
-# load_steup
+# 读取system到0x10000
 
 ```
 load_setup:
@@ -522,6 +519,8 @@ kill_motor:
 ```
 
 先将dx中保存的光标行号与列号入栈，然后通过dx中存储的端口0x3f2发送al中的消息0，关闭软驱，之后出栈数据，使得dx中继续保存为光标的行号与列号，将控制权返回主控。
+
+# 读取setup到0x90200
 
 ```
 	mov	ax,#SYSSEG

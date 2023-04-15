@@ -324,6 +324,12 @@ struct request {
 	struct request * next;			/* 指向下一项请求 */
 };
 
+/*
+ * The request-struct contains all necessary data
+ * to load a nr of sectors into memory
+ */
+struct request request[NR_REQUEST];
+
 void blk_dev_init(void)
 {
 	int i;
@@ -335,6 +341,8 @@ void blk_dev_init(void)
 }
 
 ```
+
+![main_30](../images/04_main/main_30.png#pig_center)
 
 进程要想与块设备进行沟通，必须经过主机内存中的缓冲区。请求项管理结构request[32]就是操作系统管理缓冲区中的缓冲块与块设备上逻辑块之间读写关系的数据结构。
 
@@ -639,7 +647,7 @@ outb_p(0x80|addr,0x70); \
 inb_p(0x71); \
 })
 
-#define BCD_TO_BIN(val) ((val)=((val)&15) + ((val)>>4)*10)     /* 从十进制转化为16进制 */
+#define BCD_TO_BIN(val) ((val)=((val)&15) + ((val)>>4)*10)     /* 从二进制编码的十进制(BCD)转化为16进制 */
 
 extern long startup_time;							// 开机时间。从 1970:0:0:0 开始计时的秒数
 
@@ -726,8 +734,18 @@ static int month[12] = {
 进程0是Linux操作系统中运行的第一个进程，也是Linux操作系统父子进程创建机制的第一个父进程。下面讲解的内容对进程0能够在主机中正常运算的影响最为重要和深远，主要包含如下三方面的内容：
 
 1. 系统先初始化进程0。进程0管理结构task_struct的母本（init_task ={INIT_TASK,}）已经在代码设计阶段事先设计好了，但这并不代表进程0已经可用了，还要将进程0的task_struct中的LDT、TSS与GDT相挂接，并对GDT、task[64]以及与进程调度相关的寄存器进行初始化设置。
+
+![main_31](../images/04_main/main_31.png#pig_center)
+
+![main_32](../images/04_main/main_32.png#pig_center)
+
+![main_33](../images/04_main/main_33.png#pig_center)
+
 2. Linux 0.11作为一个现代操作系统，其最重要的标志就是能够支持多进程轮流执行，这要求进程具备参与多进程轮询的能力。系统这里对时钟中断进行设置，以便在进程0运行后，为进程0以及后续由它直接、间接创建出来的进程能够参与轮转奠定基础。
 3. 进程0要具备处理系统调用的能力。每个进程在运算时都可能需要与内核进行交互，而交互的端口就是系统调用程序。系统通过函数set_system_gate将system_call与IDT相挂接，这样进程0就具备了处理系统调用的能力了。这个system_call就是系统调用的总入口。进程0只有具备了以上三种能力才能保证将来在主机中正常地运行，并将这些能力遗传给后续建立的进程。这三点的实现都是在sched_init()函数中实现的，具体代码如下：
+
+
+![main_34](../images/04_main/main_34.png#pig_center)
 
 ```
 /* 定义了段描述符的数据结构。该结构仅说明每个描述符是由 8 个字节构成，每个描述符表共有 256 项
@@ -984,7 +1002,7 @@ sched_init()函数接下来用for循环将task[64]除进程0占用的0项外的�
 
 原理详解:
 
-	__asm__("pushfl ; andl $0xffffbfff,(%esp) ; popfl"): 将标志寄存器入栈，清除中断使能标志位(IF)即第14位，由此将去使能中断，之后将修改值出栈。
+	__asm__("pushfl ; andl $0xffffbfff,(%esp) ; popfl"): 将标志寄存器入栈，清除中断使能标志位(NT)即第14位，由此将去使能中断，之后将修改值出栈。
 	ltr(0)：将GDT中第一个条目的TSS（任务状态段）结构加载到任务寄存器（tr）中。 tr寄存器保存与当前任务的TSS对应的段选择器（在以后切换到该任务时操作系统会使用它）。
 	lldt(0)：将GDT中第一个条目的LDT（本地描述符表）结构加载到本地描述符表寄存器（ldtr）中。当进程运行时，MMU将其逻辑地址发送到LDTR，LDTR将虚拟地址映射到物理地址。
 
@@ -1012,6 +1030,8 @@ sched_init()函数接下来用for循环将task[64]除进程0占用的0项外的�
 ```
 
 
+![main_36](../images/04_main/main_36.gif#pig_center)
+
 1. 对支持轮询的8253定时器进行设置。这一步操作如图中的第一步所示，其中LATCH最关键。LATCH是通过一个宏定义的，通过它在sched.c中的定义“#define LATCH（1193180/HZ）”，即系统每10毫秒发生一次时钟中断。
 2. 设置时钟中断，如图中的第二步所示，timer_interrupt()函数挂接后，在发生时钟中断时，系统就可以通过IDT找到这个服务程序来进行具体的处理。
 3. 将8259A芯片中与时钟中断相关的屏蔽码打开，时钟中断就可以产生了。从现在开始，时钟中断每1/100秒就产生一次。由于此时处于“关中断”状态，CPU并不响应，但进程0已经具备参与进程轮转的潜能。
@@ -1034,32 +1054,606 @@ sched_init()函数接下来用for循环将task[64]除进程0占用的0项外的�
 # 初始化缓冲区管理结构
 
 
+缓冲区是内存与外设（如硬盘，以后以硬盘为例）进行数据交互的媒介。内存与硬盘最大的区别在于，硬盘的作用仅仅是对数据信息以很低的成本做大量数据的断电保存，并不参与运算（因为CPU无法到硬盘上进行寻址），而内存除了需要对数据进行保存以外，更重要的是要与CPU、总线配合进行数据运算。**缓冲区则介于两者之间，它既对数据信息进行保存，也能够参与一些像查找、组织之类的间接、辅助性运算**。有了缓冲区这个媒介以后，对外设而言，它仅需要考虑与缓冲区进行数据交互是否符合要求，而不需要考虑内存如何使用这些交互的数据；对内存而言，它也仅需要考虑与缓冲区交互的条件是否成熟，而不需要关心此时外设对缓冲区的交互情况。两者的组织、管理和协调将由操作系统统一操作。
 
+操作系统通过hash_table[NR_HASH]、buffer_head双向环链表组成的复杂的哈希表管理缓冲区。操作系统通过调用buffer_init()函数对缓冲区进行设置，执行代码如下：
 
+```
+	buffer_init(buffer_memory_end);
+```
 
-
-
-
-
-
-
-
-
-
-
+![main_37](../images/04_main/main_37.png#pig_center)
 
 ```
 
-    buffer_init(buffer_memory_end);
+/* 缓冲区头数据结构 
+/* 在程序中常用 bh 来表示 buffer_head 类型的缩写
+*/
+struct buffer_head {
+	char* b_data;							/* pointer to data block (1024 bytes) 数据块 */
+	unsigned long b_blocknr;				/* block number 块号 */
+	unsigned short b_dev;					/* device (0 = free) 数据源的设备号 */
+	unsigned char b_uptodate;  				/* 更新标志，表示数据是否已经更新 */
+	unsigned char b_dirt;					/* 0-clean,1-dirty */
+	unsigned char b_count;					/* users using this block */  /* 使用的用户数, reference count */ 
+	unsigned char b_lock;					/* 0 - ok, 1 -locked */
+	struct task_struct * b_wait;          	/* 指向等待该缓冲区解锁的任务 */
+	struct buffer_head * b_prev;			/* 前一块（这四个指针用于缓冲区的管理）*/
+	struct buffer_head * b_next;			/* 下一块 */
+	struct buffer_head * b_prev_free;		/* 前一空闲块 */
+	struct buffer_head * b_next_free;		/* 下一空闲块 */
+};
+
+/* 外部传入，动态生成  整个内核代码的末尾地址 */
+extern int end;                   
+struct buffer_head * start_buffer = (struct buffer_head *) &end;
+
+#define BLOCK_SIZE 1024                   	/* 数据块长度 */
+
+int NR_BUFFERS = 0;
+
+struct buffer_head * hash_table[NR_HASH];
+
+#define NR_HASH 307                       	/* 缓冲区hash表大小 */
+
+void buffer_init(long buffer_end)
+{
+	struct buffer_head * h = start_buffer;
+	void * b;
+	int i;
+/* 如果缓冲区高端等于 1Mb，则由于从 640KB-1MB 被显示内存和 BIOS 占用，因此实际可用缓冲区
+/* 内存 
+/* 高端应该是 640KB。否则内存高端一定大于 1MB
+*/
+	if (buffer_end == 1<<20)      //1M
+		b = (void *) (640*1024);   // = A0000,  640k
+	else
+		b = (void *) buffer_end;    // 这里采用2M为例
+	/* 当末端比内核末端+1（即）缓冲区开始位置大于等于至少一页时候 */
+	while ( (b -= BLOCK_SIZE) >= ((void *) (h+1)) ) {    //BLOCK_SIZE = 1024
+		h->b_dev = 0;					
+		h->b_dirt = 0;
+		h->b_count = 0;
+		h->b_lock = 0;
+		h->b_uptodate = 0;
+		h->b_wait = NULL;
+		h->b_next = NULL;				// 这两项初始化为空，后续的使用将与hast_table挂接
+		h->b_prev = NULL;
+		h->b_data = (char *) b;         // 每个buffer_head关联一个缓冲块（1024 字节）
+		h->b_prev_free = h-1;			// 使得buffer_head分别与前
+		h->b_next_free = h+1;			// 后buffer_head挂接，形成双向链表
+		h++;
+		NR_BUFFERS++;                   // 缓冲区块数累加， 初始为0
+		if (b == (void *) 0x100000)     // 如果地址 b 递减到等于 1MB，则跳过 384KB， 让 b 指向地址 0xA0000(640KB)处，因为640k-1M 存有ROMBIOS&VGA信息
+			b = (void *) 0xA0000;
+	}
+	h--;                                // 让 h 指向最后一个有效缓冲头
+	free_list = start_buffer;           // 让空闲链表头指向头一个缓冲区头 
+	free_list->b_prev_free = h;
+	h->b_next_free = free_list;         // 形成一个环链
+	for (i=0;i<NR_HASH;i++)             // 初始化 hash 表（哈希表、散列表），置表中所有的指针为 NULL
+		hash_table[i]=NULL;
+}	
+
+```
+
+buffer_memory_end为缓冲区末端位置。
+
+![main_03](../images/04_main/main_03.jpg#pig_center)
+
+每个buffer_head的大小为32字节，每个block大小为1024字节，则可分配缓冲区对数为(3FFFFF-A0000)/(0x400+0x20) = 3389对
+
+![main_38](../images/04_main/main_38.png#pig_center)
+
+在buffer_init()函数里，从内核的末端及缓冲区的末端同时开始，方向相对增长、配对地做出buffer_head、缓冲块，直到不足一对buffer_head、缓冲块。在第2章开始时设定的内存格局（16M内存，1MB内核内存，3MB缓存，2MB虚拟盘，9MB主内存）下，有3000多对buffer_head、缓冲块，buffer_head在低地址端，缓冲块在高地址端。
+
+![main_39](../images/04_main/main_39.png#pig_center)
+
+将buffer_head的成员设备号b_dev、引用次数b_count、“更新”标志b_uptodate、“脏”标志b_dirt、“锁定”标志b_lock设置为0。如图2-24所示，将b_data指针指向对应的缓冲块。利用buffer_head的b_prev_free、b_next_free，将所有的buffer_head形成双向链表。使free_list指向第一个buffer_head，并利用free_list将buffer_head形成双向链表链接成双向环链表，如图所示。
+
+![main_40](../images/04_main/main_40.png#pig_center)
+
+![main_27](../images/04_main/main_27.jpg#pig_center)
+
+![main_26](../images/04_main/main_26.jpg#pig_center)
+
+注意下图顶部所示的内存的变化。在紧靠系统内核的部分，多出了一块用黑色表示的内存区域，那里面存储的就是缓冲区管理结构。由于它管理着3000多个缓冲块，因此它占用的内存空间的大小，与内核几乎差不多。图中也对空闲表的双向链表结构给出了形象的说明。
+
+![main_25](../images/04_main/main_25.jpg#pig_center)
+
+这个end就是内核代码末端的地址。在代码编写阶段，设计者事先较难准确估算这个地址，于是就在内核模块链接期间设置end这个值，然后在这里使用。
+
+最后，对hash_table[307]进行设置，将hash_table[307]的所有项全部设置为NULL。同时，又用一个 hashmap 结构，索引到所有缓冲头，方便快速查找，为之后的通过 LRU 算法使用缓冲区做准备。
+
+![main_41](../images/04_main/main_41.png#pig_center)
+
+
+# 初始化硬盘
+
+```
     hd_init();
-    floppy_init();
 
-    sti();
-    move_to_user_mode();
-    if (!fork()) {
-        init();
-    }
-
-    for(;;) pause();
-}
 ```
+
+硬盘的初始化为进程与硬盘这种块设备进行I/O通信建立了环境基础。
+
+在hd_init()函数中，将硬盘请求项服务程序do_hd_request()与blk_dev控制结构相挂接，硬盘与请求项的交互工作将由do_hd_request()函数来处理，然后将硬盘中断服务程序hd_interrupt()与IDT相挂接，最后，复位主8259A int2的屏蔽位，允许从片发出中断请求信号，复位硬盘的中断请求屏蔽位（在从片上），允许硬盘控制器发送中断请求信号。
+
+```
+#define MAJOR_NR 3		// 硬盘主设备号是 3
+#define DEVICE_REQUEST do_hd_request
+
+struct request {
+	int dev;						/* -1 if no request, -1 就表示空闲*/
+	int cmd;						/* READ or WRITE */
+	int errors;     				/* 表示操作时产生的错误次数 */
+	unsigned long sector;      		/* 表示起始扇区 */
+	unsigned long nr_sectors;   	/* 扇区数 */
+	char * buffer;              	//表示数据缓冲区，也就是读盘之后的数据放在内存中的什么位置
+	struct task_struct * waiting;   /* task_struct 结构，这可以表示一个进程，也就表示是哪个进程发起了这个请求
+	struct buffer_head * bh;        /* buffer header  缓冲区头指针
+	struct request * next;			/* 指向下一项请求
+};
+```
+
+
+
+```
+
+struct blk_dev_struct {
+	void (*request_fn)(void);			// 请求操作的函数指针，可以使硬盘，软盘或者其他
+	struct request * current_request;	// 请求信息结构
+};
+
+	/* 硬盘系统初始化 */
+	void hd_init(void)
+	{
+		blk_dev[MAJOR_NR].request_fn = DEVICE_REQUEST;	// do_hd_request()
+		set_intr_gate(0x2E,&hd_interrupt);          	//set interrupt
+		outb_p(inb_p(0x21)&0xfb,0x21);      			//往几个 IO 端口上读写，其作用是允许硬盘控制器发送中断请求信号
+		outb(inb_p(0xA1)&0xbf,0xA1);
+	}
+
+```
+
+![main_28](../images/04_main/main_28.jpg#pig_center)
+
+```
+
+#define CURRENT (blk_dev[MAJOR_NR].current_request)	 	// CURRENT 为指定主设备号的当前请求结构
+
+#define MAJOR(a) (((unsigned)(a))>>8)     // 取高字节（主设备号）
+#define MINOR(a) ((a)&0xff)               // 取低字节（次设备号）
+
+// 检查指针，设备号，是否锁定
+#define INIT_REQUEST \
+repeat: \
+	if (!CURRENT) \											/* 当前请求不存在 */
+		return; \
+	if (MAJOR(CURRENT->dev) != MAJOR_NR) \					/* 当前设备与调用请求设备号不符 */
+		panic(DEVICE_NAME ": request list destroyed"); \
+	if (CURRENT->bh) { \									/* 当前缓冲区头指针为空 */
+		if (!CURRENT->bh->b_lock) \							/* 当前缓冲区未被锁定 */
+			panic(DEVICE_NAME ": block not locked"); \
+	}
+// 如果在进行请求操作时缓冲区没锁定则死机
+#endif
+
+/*
+ *  This struct defines the HD's and their types.
+ *  各字段分别是磁头数、每磁道扇区数、柱面数、写前预补偿柱面号、磁头着陆区柱面号、控制字节。
+ */
+struct hd_i_struct {
+	int head,sect,cyl,wpcom,lzone,ctl;
+	};
+#ifdef HD_TYPE
+struct hd_i_struct hd_info[] = { HD_TYPE };
+#define NR_HD ((sizeof (hd_info))/(sizeof (struct hd_i_struct)))
+#else
+struct hd_i_struct hd_info[] = { {0,0,0,0,0,0},{0,0,0,0,0,0} };
+static int NR_HD = 0;
+#endif
+
+/* 定义硬盘分区结构。给出每个分区的物理起始扇区号、分区扇区总数。 
+/* 其中 5 的倍数处的项（例如 hd[0]和 hd[5]等）代表整个硬盘中的参数。
+*/
+static struct hd_struct {
+	long start_sect;
+	long nr_sects;
+} hd[5*MAX_HD]={{0,0},};
+```
+
+```
+/* 将状态置为 TASK_RUNNING
+*/
+void wake_up(struct task_struct **p)
+{
+	if (p && *p) {
+		(**p).state=0;
+		*p=NULL;                //判空后，state切换为运行状态，释放当前等待的任务指针；
+	}
+}
+
+/* 解锁缓冲区头bh
+*/
+static inline void unlock_buffer(struct buffer_head * bh)
+{
+	if (!bh->b_lock)
+		printk("ll_rw_block.c: buffer not locked\n\r");
+	bh->b_lock = 0;
+	wake_up(&bh->b_wait);		// 唤醒等待该缓冲区的任务
+}
+
+/*
+ * used to wait on when there are no free requests
+ * 等待空闲请求的链表
+ */
+struct task_struct * wait_for_request = NULL;
+
+/* 结束请求
+*/
+extern inline void end_request(int uptodate)
+{
+	DEVICE_OFF(CURRENT->dev);
+	if (CURRENT->bh) {							// 当前缓冲区头指针不为空
+		CURRENT->bh->b_uptodate = uptodate;		// 置更新标志
+		unlock_buffer(CURRENT->bh);				// 释放缓冲区
+	}
+	if (!uptodate) {									// 如果更新状态为无效值
+		printk(DEVICE_NAME " I/O error\n\r");	
+		printk("dev %04x, block %d\n\r",CURRENT->dev,
+			CURRENT->bh->b_blocknr);
+	}
+	wake_up(&CURRENT->waiting);					// 唤醒等待任务
+	wake_up(&wait_for_request);									
+	CURRENT->dev = -1;                 			// 表示当前设备空闲
+	CURRENT = CURRENT->next;					// 转移到下一个请求
+}
+
+	// 执行硬盘读写请求操作
+	void do_hd_request(void)
+	{
+		int i,r;
+		unsigned int block,dev;
+		unsigned int sec,head,cyl;
+		unsigned int nsect;
+
+		INIT_REQUEST;						// 检查请求的合法性
+		dev = MINOR(CURRENT->dev);
+		block = CURRENT->sector;			// 起始扇区数
+
+		/* 该代码中的 dev 变量设置为从请求中提取的次设备号，block 设置为该请求所在的扇区号。
+		 * 接下来的代码检查 dev 的值是否大于或等于5 * NR_HD或者结束扇区（定义为当前块+2）是* 否超出了该硬盘的总扇区数。如果这两个条件任何一个成立，函数将以错误方式结束该请求，* 并跳转到标记 repeat 处。
+		*/
+		if (dev >= 5*NR_HD || block+2 > hd[dev].nr_sects) {
+			end_request(0);
+			goto repeat;                 	//并跳转到标号 repeat 处, （定义在 INIT_REQUEST 开始处）
+		}
+
+		/* block更新为物理起始扇区号加上原来的block值。然后将dev变量除以5以获取相应的硬盘**号。
+		*/
+		block += hd[dev].start_sect;
+		dev /= 5;
+
+		/* 下面嵌入汇编代码用来从硬盘信息结构中根据起始扇区号和每磁道扇区数计算在磁道中的 
+		/* 扇区号(sec)、所在柱面号(cyl)和磁头号(head)
+		*/
+		__asm__("divl %4":"=a" (block),"=d" (sec):"0" (block),"1" (0),
+			"r" (hd_info[dev].sect));
+		__asm__("divl %4":"=a" (cyl),"=d" (head):"0" (block),"1" (0),
+			"r" (hd_info[dev].head));
+```
+
+这行代码是一个内嵌的汇编，用于在硬盘信息结构hd_info中获取当前设备dev的每磁道扇区数，并使用除法指令divl将当前请求的扇区号分解出要访问的柱面、磁头和扇区。
+
+	被除数：((edx<<32)|eax):block
+	除数: hd[dev].start_sect(物理起始扇区号)
+	商: block(块区)
+	余数: sec(扇区号)
+
+类似的第二个内嵌汇编得到的是
+
+	被除数：((edx<<32)|eax):block
+	除数: hd_info[dev].head(磁头号)
+	商:   cyl(柱面号)
+	余数: head(磁头号)
+
+
+```
+static int reset = 0;	// 全局复位变量
+
+#define HD_ERROR	0x1f1	/* see err-bits */
+#define HD_STATUS	0x1f7	/* see status-bits */
+
+#define HD_CMD		0x3f6
+
+#define nop() __asm__ ("nop"::)		// 空操作
+
+#define SEEK_STAT	0x10
+#define READY_STAT	0x40
+#define BUSY_STAT	0x80
+
+// 等待硬盘就绪。
+static int drive_busy(void)
+{
+	unsigned int i;
+
+	for (i = 0; i < 10000; i++)
+		if (READY_STAT == (inb_p(HD_STATUS) & (BUSY_STAT|READY_STAT)))
+			break;
+	i = inb(HD_STATUS);
+	i &= BUSY_STAT | READY_STAT | SEEK_STAT;
+	if (i == READY_STAT | SEEK_STAT)
+		return(0);
+	printk("HD controller times out\n\r");
+	return(1);
+}
+
+
+// 诊断复位（重新校正）硬盘控制器
+static void reset_controller(void)
+{
+	int	i;
+
+	outb(4,HD_CMD);               				// 向控制寄存器端口发送控制字节(4-复位)。
+	for(i = 0; i < 100; i++) nop();    			// 等待一段时间（循环空操作）
+	outb(hd_info[0].ctl & 0x0f ,HD_CMD);       	// 再发送正常的控制字节(不禁止重试、重读)
+	if (drive_busy())
+		printk("HD-controller still busy\n\r");
+	if ((i = inb(HD_ERROR)) != 1)
+		printk("HD-controller reset failed: %02x\n\r",i);
+}
+
+
+#define WRERR_STAT	0x20
+
+#define HD_DATA		0x1f0	/* _CTL when writing */
+
+/* 向硬盘控制器发送命令块  写端口
+*/
+static void hd_out(unsigned int drive,unsigned int nsect,unsigned int sect,
+		unsigned int head,unsigned int cyl,unsigned int cmd,
+		void (*intr_addr)(void))
+{
+	register int port asm("dx");
+
+	if (drive>1 || head>15)
+		panic("Trying to write bad sector");
+	if (!controller_ready())
+		panic("HD controller not ready");
+	do_hd = intr_addr;
+	outb_p(hd_info[drive].ctl,HD_CMD);
+	port=HD_DATA;
+	outb_p(hd_info[drive].wpcom>>2,++port);
+	outb_p(nsect,++port);
+	outb_p(sect,++port);
+	outb_p(cyl,++port);
+	outb_p(cyl>>8,++port);
+	outb_p(0xA0|(drive<<4)|head,++port);
+	outb(cmd,++port);
+}
+
+/* 检测硬盘执行命令后的状态。(win_表示温切斯特硬盘的缩写)
+*/
+static int win_result(void)
+{
+	int i=inb_p(HD_STATUS);   //status is in some register
+
+	if ((i & (BUSY_STAT | READY_STAT | WRERR_STAT | SEEK_STAT | ERR_STAT))
+		== (READY_STAT | SEEK_STAT))
+		return(0); /* ok */
+	if (i&1) i=inb(HD_ERROR);    // 若 ERR_STAT 置位，则读取错误寄存器
+	return (1);
+}
+
+/* 读写硬盘失败处理调用函数
+*/
+static void bad_rw_intr(void)
+{
+	if (++CURRENT->errors >= MAX_ERRORS)
+		end_request(0);
+	if (CURRENT->errors > MAX_ERRORS/2)
+		reset = 1;
+}
+
+
+/* 硬盘重新校正（复位）中断调用函数
+*/
+static void recal_intr(void)
+{
+	if (win_result())
+		bad_rw_intr();
+	do_hd_request();
+}
+
+
+static void reset_hd(int nr)
+{
+	reset_controller();
+	hd_out(nr,hd_info[nr].sect,hd_info[nr].sect,hd_info[nr].head-1,
+		hd_info[nr].cyl,WIN_SPECIFY,&recal_intr);
+}
+
+#define WIN_WRITE		0x30
+```
+
+```
+/* 写端口 port，共写 nr 字，从 buf 中取数据。
+*/
+#define port_write(port,buf,nr) \
+__asm__("cld;rep;outsw"::"d" (port),"S" (buf),"c" (nr):"cx","si")
+```
+
+这段代码是C语言中的宏定义，它定义了一个名为port_write的宏，并用内嵌汇编实现了向指定端口写入数据的功能。
+
+该内嵌汇编使用了“rep; outsw”指令序列来将buf所指向的nr个字节的内容写入到端口号为port的设备中。其中，操作数d、S、c分别被赋值为(port)、(buf)、(nr)；而cx和si寄存器则被作为汇编指令的默认操作数，即程序不直接使用这两个寄存器。
+
+```
+#ifdef DEVICE_INTR
+void (*DEVICE_INTR)(void) = NULL;
+#endif
+
+#define DEVICE_INTR do_hd                         // 设备中断处理程序 do_hd()。
+
+// 写扇区中断调用函数。
+static void write_intr(void)
+{
+	if (win_result()) {
+		bad_rw_intr();
+		do_hd_request();
+		return;
+	}
+	if (--CURRENT->nr_sectors) {
+		CURRENT->sector++;
+		CURRENT->buffer += 512;
+		do_hd = &write_intr;
+		port_write(HD_DATA,CURRENT->buffer,256);
+		return;
+	}
+	end_request(1);
+	do_hd_request();
+}
+
+#define WIN_READ		0x20
+
+// 读操作中断调用函数
+static void read_intr(void)
+{
+	if (win_result()) {
+		bad_rw_intr();
+		do_hd_request();
+		return;
+	}
+	port_read(HD_DATA,CURRENT->buffer,256);
+	CURRENT->errors = 0;
+	CURRENT->buffer += 512;
+	CURRENT->sector++;
+	if (--CURRENT->nr_sectors) {
+		do_hd = &read_intr;
+		return;
+	}
+	end_request(1);    // 若全部扇区数据已经读完，则处理请求结束事宜
+	do_hd_request();
+}
+
+		sec++;
+		nsect = CURRENT->nr_sectors;		// 获得当前所在扇区号
+		/* 如果 reset 置 1，则执行复位操作。复位硬盘和控制器，并置需要重新校正标志，返回
+		*/
+		if (reset) {
+			reset = 0;
+			recalibrate = 1;
+			reset_hd(CURRENT_DEV);
+			return;
+		}
+		/* 如果重新校正标志(recalibrate)置位，则首先复位该标志，然后向硬盘控制器发送重新 
+		/* 校正命令
+		*/
+		if (recalibrate) {
+			recalibrate = 0;
+			hd_out(dev,hd_info[CURRENT_DEV].sect,0,0,0,
+				WIN_RESTORE,&recal_intr);
+			return;
+		}	
+		if (CURRENT->cmd == WRITE) {
+			hd_out(dev,nsect,sec,head,cyl,WIN_WRITE,&write_intr);
+			for(i=0 ; i<3000 && !(r=inb_p(HD_STATUS)&DRQ_STAT) ; i++)
+				/* nothing */ ;
+			if (!r) {
+				bad_rw_intr();
+				goto repeat;
+			}
+			port_write(HD_DATA,CURRENT->buffer,256);
+		} else if (CURRENT->cmd == READ) {
+			hd_out(dev,nsect,sec,head,cyl,WIN_READ,&read_intr);
+		} else		
+			panic("unknown hd-command");	// 未知命令，宕机
+	}
+
+```
+
+# 开启软盘
+
+```
+     floppy_init();
+```
+这东西都没人用了，算了算了。
+
+# 开启中断
+
+```
+   sti();
+```
+
+现在，系统中所有中断服务程序都已经和IDT正常挂接。这意味着中断服务体系已经构建完毕，系统可以在32位保护模式下处理中断，重要意义之一是可以使用系统调用。
+
+下图给出了开中断后的效果，注意其中EFLAGS中的变化。
+
+
+![main_29](../images/04_main/main_29.jpg#pig_center)
+
+目前开启的中断
+
+|中断号	|中断处理函数|
+|:-:|:-:|
+|0-0x10	|trap_init里设置的一堆|
+|0x20	|timer_interrupt|
+|0x21	|keyboard_interrupt|
+|0x2E	|hd_interrupt|
+|0x80	|system_call|
+
+
+看到最后，你会发现操作系统就是一个靠中断驱动的死循环而已，如果不发生任何中断，操作系统会一直在一个死循环里等待。换句话说，让操作系统工作的唯一方式，就是触发中断。
+
+# 进程0由0特权级翻转到3特权级，成为真正的进程
+
+Linux操作系统规定，除进程0之外，所有进程都要由一个已有进程在3特权级下创建。在Linux 0.11中，进程0的代码和数据都是由操作系统的设计者写在内核代码、数据区，并且，此前处在0特权级，严格说还不是真正意义上的进程。为了遵守规则，在进程0正式创建进程1之前，要将进程0由0特权级转变为3特权级。方法是调用move_to_user_mode()函数，模仿中断返回动作，实现进程0的特权级从0转变为3。
+
+```
+    move_to_user_mode();
+```
+
+```
+
+/* 切换到用户模式运行。 
+ * 该函数利用 iret 指令实现从内核模式切换到用户模式（初始任务 0）
+*/
+#define move_to_user_mode() \		// 模仿中断硬件压栈，顺序是ss, esp, eflags, cs, eip
+__asm__ ("movl %%esp,%%eax\n\t" \	
+	"pushl $0x17\n\t" \				// SS入栈，0x17(10111)(3特权级、LDT、数据段)
+	"pushl %%eax\n\t" \				// ESP入栈
+	"pushfl\n\t" \					// EFLAGS 入栈
+	"pushl $0x0f\n\t" \				// CS入栈,  0x0F(1111)(3特权级、LDT、代码段)
+	"pushl $1f\n\t" \				// EIP入栈
+	"iret\n" \						// 出栈恢复现场、翻转特权级别从0到3
+	"1:\tmovl $0x17,%%eax\n\t" \	// 下面代码使ds,es,fs,gs,ss一致
+	"movw %%ax,%%ds\n\t" \
+	"movw %%ax,%%es\n\t" \
+	"movw %%ax,%%fs\n\t" \
+	"movw %%ax,%%gs" \
+	:::"ax")
+```
+中断与函数调用不同的是，函数调用是程序员事先设计好的，知道在代码的哪个地方调用，编译器可以预先编译出压栈保护现场和出栈恢复现场的代码；而中断的发生是不可预见的，无法预先编译出保护、恢复的代码，只好由硬件完成保护、恢复的压栈、出栈动作。所以，int指令会引发CPU硬件完成SS、ESP、EFLAGS、CS、EIP的值按序进栈，同理，CPU执行iret指令会将栈中的值自动按反序恢复给这5个寄存器。
+
+![main_29](../images/04_main/main_29.jpg#pig_center)
+
+CPU响应中断的时候，根据DPL的设置，可以实现指定的特权级之间的翻转。前面的sched_init函数中的set_system_gate（0x80,&system_call）就是设置的int 0x80中断由3特权级翻转到0特权级，3特权级的进程做了系统调用int 0x80，CPU就会翻转到0特权级执行系统代码。同理，iret又会从0特权级的系统代码翻转回3特权级执行进程代码。
+
+![main_19](../images/04_main/main_19.jpg#pig_center)
+
+
+move_to_user_mode()函数就是根据这个原理，利用iret实现从0特权级翻转到3特权级。
+
+由于进程0的代码到现在一直处在0特权级，并不是从3特权级通过int翻转到0特权级的，栈中并没有int自动压栈的5个寄存器的值。为了iret的正确使用，设计者手工写压栈代码模拟int的压栈，当执行iret指令时，CPU自动将这5个寄存器的值按序恢复给CPU，CPU就会翻转到3特权级的段，执行3特权级的进程代码。
+
+为了iret能翻转到3特权级，不仅手工模拟的压栈顺序必须正确，而且SS、CS的特权级还必须正确。注意：栈中的SS值是0x17，用二进制表示就是00010111，最后两位表示3，是用户特权级，倒数第3位是1，表示从LDT中获取段描述符，第4～5位的10表示从LDT的第3项中得到进程栈段的描述符。
+
+当执行iret时，硬件会按序将5个push压栈的数据分别出栈给SS、ESP、EFLAGS、CS、EIP。压栈顺序与通常中断返回时硬件的出栈动作一样，返回的效果也是一样的。
+
+执行完move_to_user_mode( )，相当于进行了一次中断返回，进程0的特权级从0翻转为3，成为名副其实的进程。
+
+这样 CPU 就开始可以接收并处理中断信号了，键盘可以按了，硬盘可以读写了，时钟可以震荡了，系统调用也可以生效了！
+
+这就代表着，操作系统具有了控制台交互能力，硬盘读写能力，进程调度能力，以及响应用户进程的系统调用请求！
+
+![main_42](../images/04_main/main_42.png#pig_center)
